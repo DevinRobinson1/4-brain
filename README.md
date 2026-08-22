@@ -14,8 +14,27 @@ These lenses were measured on a single ~6,400-line review. Each model surfaced a
 | **Gemini** | Breadth across many files at once; long context; video/audio/image/PDF |
 | **Grok** | Product/ops/regulatory reality — does it work end-to-end, what breaks on deploy, copy that lies |
 | **Claude** | Adjudication, verification against source, the actual proof run, the fix |
+| **Browser** _(optional)_ | Behavioural truth: does it work when clicked. Detected via pstack `/browse` when installed, skipped when not |
 
 The corollary: **give each brain a different lens.** Ask four models the same generic question and you pay four times for one answer.
+
+### What the product lens actually catches
+
+Worth calling out, because it is the row people skip. On a two-round review of a
+new feature, both blockers that would have shipped came from Grok, not from the
+two code reviewers:
+
+- selection was scoped to the visible page, so the feature was unusable on the
+  list sizes it was built for
+- the new records silently inherited a global "skip recently contacted" window
+  and deleted the hand-picked entries the user had just chosen
+
+Both were **correct code that did not do the job**. No amount of correctness
+review finds those, because nothing is wrong with the code.
+
+The same review also produced 13 rejected findings, including two rated blocker
+that turned out to be guarded on the very next line. Adjudication is not
+overhead. It is the half that keeps the cross-check honest.
 
 ## Install
 
