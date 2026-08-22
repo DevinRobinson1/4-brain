@@ -95,6 +95,31 @@ grok --sandbox read-only --disallowed-tools "edit,write" -p "<prompt>"
 - `--output-format json` and `--json-schema` available for structured output.
 - Runs long on large diffs — background it with a generous ceiling.
 
+
+### Browser: behavioural evidence (optional fifth lens)
+
+The three brains above all read code. None of them can tell you whether the
+thing works when a human clicks it. That is a separate defect class, and it is
+the one that reaches the customer.
+
+This lens is **detected, not vendored.** If [pstack](https://github.com/pstack)
+is installed it ships a real Chromium harness (`/browse`, `/qa-only`) at roughly
+100ms per command with screenshots. It is ~170MB, so 4-brain depends on it when
+present and drops the route when it is not, exactly like a missing CLI.
+
+```bash
+# Present?
+ls ~/.claude/skills/browse/SKILL.md 2>/dev/null || ls ~/.codex/skills/pstack/browse/SKILL.md 2>/dev/null
+```
+
+- Prefer `/qa-only` over `/qa` for review work: report-only, never edits the code
+  under review.
+- It needs a RUNNING app. Point it at a scratch/test database, never the one your
+  `.env` points at. Dogfooding a "create" button against production writes
+  production rows.
+- Worth firing when the diff touches UI, a form, a list with pagination, or
+  anything whose bug would be "correct code that does not do the job".
+
 **All long calls:** run in the background with a 10–15 minute ceiling. A stalled brain must fail loud, never hang the turn.
 
 ---
@@ -123,8 +148,42 @@ For anything substantial, run brains **in parallel with different lenses**, then
    - Check each claim against the actual code. Reject wrong ones **with a logged reason**; caving to everything defeats the cross-check as surely as ignoring it.
    - Watch for findings about code **outside the reviewed diff** — pre-existing issues are worth reporting to the user, not fixing inside an unrelated change.
    - Watch for findings that contradict the **intended spec** — "this refunds after capture" may be exactly what the design says.
+   - **Adjudicate the FINDING and the FIX separately.** A brain can be right that
+     something is broken and wrong about how to repair it. A proposed fix that
+     scopes a query on a nullable column, for instance, silently drops rows and
+     is worse than the bug it closes.
+
+   Rejection patterns seen repeatedly, worth matching against before you act:
+
+   | Pattern | What it looks like | How to check |
+   |---|---|---|
+   | Guarded elsewhere | "unscoped tenant query", `where(eq(x.id, id))` with no org filter | Read the NEXT few lines. An `if (row.orgId !== orgId) return 404` is a real guard, just not in the WHERE clause. A grep cannot see it. |
+   | Fix worse than finding | Real defect, dangerous repair | Check the proposed fix's own assumptions: nullability, legacy rows, fail-open vs fail-closed |
+   | Severity inflation | "compliance hole" / "blocker" | Trace downstream. If a later layer already drops the bad value, the impact is a wrong counter, not an incident |
+   | Out of diff | Real, but in code this change never touches | Report it to the user; do not fix it inside an unrelated change |
+   | Contradicts spec | "this refunds after capture" | Re-read the spec. It may be the design |
+
 4. **Claude is final arbiter.** The other brains advise; they do not command.
 5. **Fix once**, after all brains report, so overlapping findings collapse into one edit.
+6. **Know what counts as a proof.** Claude runs it, but not everything that
+   passes is evidence.
+   - A grep or regex assertion proves a string is **present**. It never proves
+     the code is **correct**. Pair it with the compiler.
+   - Real case: a merge produced two declarations of the same interface field,
+     with zero conflict markers. Four static proof suites passed, because they
+     asserted the field existed. Only `tsc` caught the duplicate identifier.
+   - After any large merge, re-run the typecheck before you trust a green suite.
+   - Watch for a test that cannot fail: an unrun DB-backed suite, a check
+     `continue-on-error`'d into a permanent pass, or a job whose timeout kills it
+     so the result renders as something other than failure.
+
+7. **Watch the builder for traded-away guards.** Distinct from "introduced a
+   bug" and much harder to spot. When a brain has write access, it will sometimes
+   remove a safety check to improve something cosmetic next to it, and write a
+   confident comment justifying the trade. Observed: a DNC compliance gate
+   deleted so a "skipped" counter could be more accurate. Nothing downstream
+   re-checked the flag. Diff safety-relevant conditions specifically; do not skim
+   a deletion just because the surrounding change looks like an improvement.
 
 ### Consensus mode (high-stakes, explicitly requested)
 "Ask all four / before I commit to this / cross-architecture consensus" → same question to every brain, forced template:
