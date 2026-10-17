@@ -26,8 +26,8 @@ Four models, one terminal. Claude drives and stays in front of the user; the oth
 
 | Brain | CLI | Proven lens — what it catches that others miss |
 |---|---|---|
-| **Claude** | (you) | Driver. Adjudicates findings, verifies claims against source, runs the actual proof, does the fixing. |
-| **Codex** | `codex` | Code-path correctness, concurrency, races, migration-vs-real-data hazards. Deepest on "prove it's broken." |
+| **Claude** (Opus 5.5) | (you) | Driver. Adjudicates findings, verifies claims against source, runs the actual proof, does the fixing. |
+| **Codex** (GPT-6.1 Sol `gpt-6.1-sol` at medium effort, for review and for builds via `/codex-build`) | `codex` | Code-path correctness, concurrency, races, migration-vs-real-data hazards. Deepest on "prove it's broken." |
 | **Gemini** | `gemini` | Breadth across many files at once; long context; multimodal (video/audio/images/PDF). Catches "the same mistake in twelve places." |
 | **Grok** | `grok` | Product/ops/regulatory reality: does this work end-to-end for a real user, what breaks on deploy, what has no off-switch, copy that lies. Ranks by real-world impact. |
 
@@ -39,7 +39,7 @@ These lenses are empirical, not marketing. On a ~6,400-line review each brain su
 
 **Do NOT pass `-m` / `--model` and do NOT pin version strings in prompts.** Each CLI's configured default is the source of truth, so the stack picks up new models the day the vendor ships them. Pinning is how a stack silently rots — and pinning `-codex` variants on ChatGPT-account auth returns 400.
 
-Model names deliberately do not appear in this skill's body. Instead, **echo what actually resolved** at the start of a session so drift is visible:
+**Expected stack (2026-10-17):** Claude on Opus 5.5 as the driver; Codex on GPT-6.1 Sol at medium effort for review (`model = "gpt-6.1-sol"`, `model_reasoning_effort = "medium"` in `~/.codex/config.toml`, codex-cli 0.161 or newer); code BUILDS go through `/codex-build`, which pins the same model. This replaces GPT-6 Astra at xhigh, retired by the owner for draining the Codex usage allowance: on Terminal-Bench 4.0 (Vals AI, 2026-10-16) GPT-6.1 Sol scores 55.1% at about $1.72 a task against Astra's 59.6% at $9.58. **Never raise the default to Astra or to xhigh, max or ultra.** If one review genuinely needs more depth, raise that single call with `-c model_reasoning_effort="high"` and say so. The model comes from each CLI's config, not a `-m` flag, so **echo what actually resolved** at the start of a session and flag any mismatch with the expected stack:
 
 ```bash
 codex --version 2>&1 | head -1
@@ -49,7 +49,7 @@ grok --version 2>&1 | head -1
 grep -i '^model' ~/.codex/config.toml 2>/dev/null
 ```
 
-Report it in one line: `Brains: codex <ver>, gemini <ver>, grok <ver> — models per CLI defaults.`
+Report it in one line: `Brains: claude opus-5.5, codex <ver> (gpt-6.1-sol, medium), gemini <ver>, grok <ver>.` If the Codex model line is not `gpt-6.1-sol`, the effort line is anything above `medium`, or you are not running on Opus 5.5, say so before routing work.
 If a CLI is missing, say so once, drop that route, and continue. Don't retry it every turn.
 
 ---
@@ -89,9 +89,11 @@ gemini --include-directories /tmp/work -p "… @/tmp/work/clip.mp4 …"
 
 ### Grok — independent review
 ```bash
-grok --sandbox read-only --disallowed-tools "edit,write" -p "<prompt>"
+grok --always-approve --sandbox read-only --disallowed-tools "edit,write" --max-turns 40 -p "<prompt>"
 ```
 - `-p/--single` is headless single-turn: prints to stdout and exits.
+- **`--always-approve` is mandatory in headless mode.** Without it every tool call waits for a TTY approval that never comes, the turn ends with exit 0 and two lines of narration, and you get no findings. Judge a run by output size and a VERDICT line, never by exit code.
+- Keep inputs under the project cwd (e.g. `.4-brain-out/<run>/src/`) and reference relative paths; Grok cannot read a `C:/tmp` worktree from the project directory, and a prompt over ~30KB passed as an argument fails with `Argument list too long`.
 - `--output-format json` and `--json-schema` available for structured output.
 - Runs long on large diffs — background it with a generous ceiling.
 
